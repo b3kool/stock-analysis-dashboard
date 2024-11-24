@@ -20,7 +20,7 @@ class StockPredictor:
         except Exception as e:
             print(f"Error loading model: {e}")
             raise Exception("Failed to load pre-trained model")
-            
+  
     def _update_sentiment_lexicon(self):
         financial_lexicon = {
             'bullish': 4.0, 'bearish': -4.0, 'surge': 3.5, 'plunge': -3.5,
@@ -53,8 +53,6 @@ class StockPredictor:
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-
-        # RSI
         rs = gain / loss.replace(0, np.nan)
         df['RSI'] = 100 - (100 / (1 + rs))
         df['RSI_MA'] = df['RSI'].rolling(window=5).mean()
@@ -136,7 +134,7 @@ class StockPredictor:
             print(f"Error fetching news: {e}")
             return 0
     
-    def predict(self, symbol, days=15):
+    def predict(self, symbol):
         try:
             # Fetch recent data
             stock = yf.Ticker(symbol)
@@ -156,38 +154,45 @@ class StockPredictor:
             ]
             
             X = tech_features[feature_cols].iloc[-1:].fillna(0)
-            
-            # Get current price
             current_price = hist['Close'].iloc[-1]
             
-            # Make predictions for different timeframes
             predictions = {}
-            signal_strengths = []
+            confidence_scores = []
             
             for timeframe in ['5d', '10d', '15d']:
                 if timeframe in self.model_data['models']:
-                    model = self.model_data['models'][timeframe]['random_forest']
+                    # Get pretrained models
+                    rf_model = self.model_data['models'][timeframe]['random_forest']
+                    gb_model = self.model_data['models'][timeframe]['gradient_boosting']
                     scaler = self.model_data['models'][timeframe]['scaler']
                     
+                    # Scale features using the pretrained scaler
                     X_scaled = scaler.transform(X)
-                    prob = model.predict_proba(X_scaled)[0][1]
                     
-                    signal_strength = abs(prob - 0.5) * 2
-                    signal_strengths.append(signal_strength)
-                    predictions[f'{timeframe}_prob'] = prob
+                    # Get predictions from both pretrained models
+                    rf_prob = rf_model.predict_proba(X_scaled)[0][1]
+                    gb_prob = gb_model.predict_proba(X_scaled)[0][1]
+                    
+                    # Ensemble probability (combine RF, GB, and sentiment)
+                    # Convert sentiment score from [-1,1] to [0,1] range
+                    sentiment_prob = (sentiment_score + 1) / 2
+                    ensemble_prob = (rf_prob + gb_prob + sentiment_prob) / 3
+                    
+                    # True confidence calculation with all three components
+                    confidence = (abs(ensemble_prob - 0.5) * 2 * 100) + 50 # for scaled-confience for users 
+                    
+                    predictions[f'{timeframe}_prob'] = ensemble_prob
+                    confidence_scores.append(confidence)
                 else:
                     predictions[f'{timeframe}_prob'] = 0.5
-                    signal_strengths.append(0)
+                    confidence_scores.append(0)
             
-            # Calculate overall confidence
-            confidence = np.mean(signal_strengths) * 100
-            
-            # Adjust predictions based on sentiment
-            sentiment_factor = 1 + (sentiment_score * 0.40) 
+            # Final confidence is the mean of all three components
+            final_confidence = np.mean(confidence_scores)
             
             return {
                 'price': float(current_price),
-                'confidence': float(confidence),
+                'confidence': float(final_confidence),
                 '5d_prob': float(predictions.get('5d_prob', 0.5)),
                 '10d_prob': float(predictions.get('10d_prob', 0.5)),
                 '15d_prob': float(predictions.get('15d_prob', 0.5)),
