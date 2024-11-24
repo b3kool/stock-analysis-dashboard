@@ -3,9 +3,16 @@
 ## **Overview**  
 This Stock Analysis Dashboard App leverages **technical indicators**, **sentiment analysis**, and **machine learning** to predict stock price movements. Designed for traders and investors, it provides insights into future price trends through interactive visualizations and forecasts.  
 
-<img width="1274" alt="Screenshot 2024-11-24 at 10 20 55 PM" src="https://github.com/user-attachments/assets/385141eb-edbe-4b72-b7b1-04e4642e1458">
 
-https://github.com/user-attachments/assets/125c5f16-cd1a-4777-bd56-ae47bf1316ab
+![image](https://github.com/user-attachments/assets/0ab1f0e9-2a3a-4d09-997f-a226ee586321)
+
+
+https://github.com/user-attachments/assets/9711e842-b447-4feb-a578-23da8da17b00
+
+
+https://github.com/user-attachments/assets/f5a76978-d1c2-4763-93dc-bc54386f3e0d
+
+
 
 ## **Features**
 - **Forecasts for short-term trends**: Predicts 5-day, 10-day, and 15-day price movements using machine learning models.  
