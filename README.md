@@ -7,10 +7,10 @@ This Stock Analysis Dashboard App leverages **technical indicators**, **sentimen
 ![image](https://github.com/user-attachments/assets/0ab1f0e9-2a3a-4d09-997f-a226ee586321)
 
 
-https://github.com/user-attachments/assets/9711e842-b447-4feb-a578-23da8da17b00
+![basic functionality](https://github.com/user-attachments/assets/9711e842-b447-4feb-a578-23da8da17b00)
 
 
-https://github.com/user-attachments/assets/f5a76978-d1c2-4763-93dc-bc54386f3e0d
+![prediction scores](https://github.com/user-attachments/assets/f5a76978-d1c2-4763-93dc-bc54386f3e0d)
 
 
 
