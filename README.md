@@ -1,7 +1,11 @@
-# **Stock Prediction App**
+# **Stock Analysis Dashboard App**
 
 ## **Overview**  
-This Stock Prediction App leverages **technical indicators**, **sentiment analysis**, and **machine learning** to predict stock price movements. Designed for traders and investors, it provides insights into future price trends through interactive visualizations and forecasts.  
+This Stock Analysis Dashboard App leverages **technical indicators**, **sentiment analysis**, and **machine learning** to predict stock price movements. Designed for traders and investors, it provides insights into future price trends through interactive visualizations and forecasts.  
+
+<img width="1274" alt="Screenshot 2024-11-24 at 10 20 55 PM" src="https://github.com/user-attachments/assets/385141eb-edbe-4b72-b7b1-04e4642e1458">
+
+https://github.com/user-attachments/assets/125c5f16-cd1a-4777-bd56-ae47bf1316ab
 
 ## **Features**
 - **Forecasts for short-term trends**: Predicts 5-day, 10-day, and 15-day price movements using machine learning models.  
@@ -49,7 +53,7 @@ Open a web browser and navigate to `http://127.0.0.1:8050/`.
 ```
 stock-prediction-app/
 ├── app.py                  # Dash app and dashboard logic
-├── enhanced_model.py       # Machine learning models and stock prediction logic
+├── enhanced_model.py       # ML model and stock prediction logic
 ├── data_processing.py      # Data preprocessing and feature engineering
 ├── requirements.txt        # Project dependencies
 ├── README.md               # Documentation
@@ -99,5 +103,3 @@ We welcome contributions to improve this project. To contribute:
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 ---
-
-<img width="1274" alt="Screenshot 2024-11-24 at 10 20 55 PM" src="https://github.com/user-attachments/assets/385141eb-edbe-4b72-b7b1-04e4642e1458">
