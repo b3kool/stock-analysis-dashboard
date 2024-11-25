@@ -1,3 +1,4 @@
+import pickle
 from dash import Dash, html, dcc, Input, Output, State
 import dash
 import dash_bootstrap_components as dbc
@@ -371,7 +372,14 @@ def train_model(n_clicks, symbol):
             
         print(f"Training model for {symbol}...")
         
-        # Fetch training data
+        # Initialize predictor with pre-trained weights
+        try:
+            predictor = StockPredictor('market_model.pkl')
+            model_data = predictor.model_data
+        except Exception as e:
+            raise Exception(f"Failed to load pre-trained model: {str(e)}")
+
+        # Fetch historical and sentiment data
         stock = yf.Ticker(symbol)
         hist = stock.history(period='2y')
         
@@ -379,16 +387,53 @@ def train_model(n_clicks, symbol):
             raise Exception(f"No data found for {symbol}")
         
         # Prepare features
-        technical_features = prepare_technical_features(hist)
-        sentiment_features = prepare_sentiment_features(symbol)
+        technical_features = predictor._calculate_technical_features(hist)
+        sentiment_scores = []
         
-        # Train model
-        predictor.train(technical_features, sentiment_features)
+        # Calculate sentiment for past periods
+        for date in hist.index[-90:]:  # Last 90 days
+            sentiment_score = predictor._scrape_news_sentiment(symbol)
+            sentiment_scores.append({
+                'date': date,
+                'sentiment': sentiment_score
+            })
         
-        if predictor.is_trained:
-            return "Model trained successfully!", False
-        else:
-            return "Training failed: insufficient data", False
+        sentiment_df = pd.DataFrame(sentiment_scores)
+        sentiment_df.set_index('date', inplace=True)
+        
+        # Merge technical and sentiment features
+        combined_features = technical_features.merge(
+            sentiment_df,
+            left_index=True,
+            right_index=True,
+            how='left'
+        )
+        
+        # Fill missing sentiment values
+        combined_features['sentiment'] = combined_features['sentiment'].fillna(method='ffill').fillna(0)
+        
+        # Update model predictions with new data
+        for timeframe in ['5d', '10d', '15d']:
+            if timeframe in model_data['models']:
+                model = model_data['models'][timeframe]['random_forest']
+                scaler = model_data['models'][timeframe]['scaler']
+                
+                # Create targets for training
+                target = (hist['Close'].shift(-int(timeframe[0])) > hist['Close']).astype(int)
+                
+                # Update model with new data
+                model.n_estimators += 10  # Add more trees for new data
+                model.partial_fit(
+                    scaler.transform(combined_features.iloc[-90:]),  # Last 90 days
+                    target.iloc[-90:].fillna(0)
+                )
+        
+        # Save updated model
+        with open('market_model.pkl', 'wb') as f:
+            pickle.dump(model_data, f)
+            
+        print("Model updated successfully")
+        return "Model trained successfully!", False
             
     except Exception as e:
         print(f"Training error: {e}")
@@ -456,17 +501,19 @@ def update_dashboard(search_clicks, rsi_clicks, bb_clicks, macd_clicks,
         stock = yf.Ticker(symbol)
         hist = stock.history(period=period)
         info = stock.info
-        
+    
         if hist.empty:
             raise Exception(f"No data found for {symbol}")
+    
+        if predictor is None:
+            raise Exception("Predictor not initialized")
         
-        # Get predictions using pre-trained model
         predictions = predictor.predict(symbol)
         
         if not predictions:
             raise Exception("Failed to get predictions")
         
-        # Get the states of the indicator toggles
+        # the states of the indicator toggles
         show_rsi = bool(rsi_clicks and rsi_clicks % 2)
         show_bb = bool(bb_clicks and bb_clicks % 2)
         show_macd = bool(macd_clicks and macd_clicks % 2)
