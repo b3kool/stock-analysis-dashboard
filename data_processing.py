@@ -7,6 +7,31 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 
+def calculate_technical_indicators(data):
+    df = data.copy()
+    
+    # RSI
+    delta = df['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    df['RSI'] = 100 - (100 / (1 + rs))
+    
+    # MACD
+    exp1 = df['Close'].ewm(span=12, adjust=False).mean()
+    exp2 = df['Close'].ewm(span=26, adjust=False).mean()
+    df['MACD'] = exp1 - exp2
+    df['Signal_Line'] = df['MACD'].ewm(span=9, adjust=False).mean()
+    df['MACD_Histogram'] = df['MACD'] - df['Signal_Line']
+    
+    # Bollinger Bands
+    df['MA20'] = df['Close'].rolling(window=20).mean()
+    std20 = df['Close'].rolling(window=20).std()
+    df['Bollinger_Upper'] = df['MA20'] + (std20 * 2)
+    df['Bollinger_Lower'] = df['MA20'] - (std20 * 2)
+    
+    return df
+
 def prepare_data(stock_data, symbol):
     
     technical_features = prepare_technical_features(stock_data)

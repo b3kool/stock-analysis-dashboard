@@ -1,4 +1,3 @@
-import pickle
 from dash import Dash, html, dcc, Input, Output, State
 import dash
 import dash_bootstrap_components as dbc
@@ -7,199 +6,97 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from plotly.subplots import make_subplots
-from data_processing import prepare_technical_features, prepare_sentiment_features
-from datetime import datetime
+from data_processing import prepare_technical_features, prepare_sentiment_features, calculate_technical_indicators
 from enhanced_model import StockPredictor
 
 app = Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
 
-# start StockPredictor
-try:
-    predictor = StockPredictor('market_model.pkl')
-    print("Successfully loaded pre-trained model")
-except Exception as e:
-    print(f"Error loading model: {e}")
-    predictor = None
+# Initialize global predictor
+predictor = None
+def initialize_predictor():
+    global predictor
+    try:
+        predictor = StockPredictor('stock_prediction_model.pkl')
+        print("Successfully loaded pre-trained model")
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        predictor = None
 
+initialize_predictor()
 
-# default data
+# Default data setup
 DEFAULT_SYMBOL = "RELIANCE.NS"
 default_stock = yf.Ticker(DEFAULT_SYMBOL)
 default_hist = default_stock.history(period='1y')
-
-#  default features
 default_technical_features = prepare_technical_features(default_hist)
 default_sentiment_features = prepare_sentiment_features(DEFAULT_SYMBOL)
 
-
-def calculate_technical_indicators(data):
-    df = data.copy()
-    
-    # RSI
-    delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    df['RSI'] = 100 - (100 / (1 + rs))
-    
-    # MACD
-    exp1 = df['Close'].ewm(span=12, adjust=False).mean()
-    exp2 = df['Close'].ewm(span=26, adjust=False).mean()
-    df['MACD'] = exp1 - exp2
-    
-    # Bollinger Bands
-    df['MA20'] = df['Close'].rolling(window=20).mean()
-    std20 = df['Close'].rolling(window=20).std()
-    df['Bollinger_Upper'] = df['MA20'] + (std20 * 2)
-    df['Bollinger_Lower'] = df['MA20'] - (std20 * 2)
-    
-    return df
-
 def create_chart(data, show_rsi=False, show_bb=False, show_macd=False):
-
-    df = data.copy()
+    df = calculate_technical_indicators(data.copy())
     
-    # calculate MA
+    # Calculate moving averages
     df['MA5'] = df['Close'].rolling(window=5).mean()
     df['MA10'] = df['Close'].rolling(window=10).mean()
     df['MA20'] = df['Close'].rolling(window=20).mean()
     
-    # calculate MACD 
-    exp1 = df['Close'].ewm(span=12, adjust=False).mean()
-    exp2 = df['Close'].ewm(span=26, adjust=False).mean()
-    df['MACD'] = exp1 - exp2
-    df['Signal_Line'] = df['MACD'].ewm(span=9, adjust=False).mean()
-    df['MACD_Histogram'] = df['MACD'] - df['Signal_Line']
-    
-    # figure with secondary y-axis
+    # Create subplots figure
     fig = make_subplots(rows=2, cols=1, 
-                        row_heights=[0.7, 0.3],
-                        shared_xaxes=True,
-                        vertical_spacing=0.05)
+                       row_heights=[0.7, 0.3],
+                       shared_xaxes=True,
+                       vertical_spacing=0.05)
 
-    # price line and moving averages to main plot
+    # Add main price plot
     fig.add_trace(
-        go.Scatter(
-            x=df.index,
-            y=df['Close'],
-            name='Price',
-            line=dict(color='#4040ed', width=2),
-            fill='tozeroy',
-            fillcolor='rgba(64, 68, 237, 0.1)'
-        ),
+        go.Scatter(x=df.index, y=df['Close'], name='Price',
+                  line=dict(color='#4040ed', width=2),
+                  fill='tozeroy', fillcolor='rgba(64, 68, 237, 0.1)'),
         row=1, col=1
     )
     
-    # add MA
-    fig.add_trace(
-        go.Scatter(
-            x=df.index,
-            y=df['MA5'],
-            name='MA5',
-            line=dict(color='yellow', width=1)
-        ),
-        row=1, col=1
-    )
-    
-    fig.add_trace(
-        go.Scatter(
-            x=df.index,
-            y=df['MA10'],
-            name='MA10',
-            line=dict(color='orange', width=1)
-        ),
-        row=1, col=1
-    )
-    
-    fig.add_trace(
-        go.Scatter(
-            x=df.index,
-            y=df['MA20'],
-            name='MA20',
-            line=dict(color='red', width=1)
-        ),
-        row=1, col=1
-    )
+    # Add moving averages
+    for ma, color in [('MA5', 'yellow'), ('MA10', 'orange'), ('MA20', 'red')]:
+        fig.add_trace(
+            go.Scatter(x=df.index, y=df[ma], name=ma,
+                      line=dict(color=color, width=1)),
+            row=1, col=1
+        )
 
-    # add Bollinger Bands
+    # Add technical indicators based on toggles
     if show_bb:
-        rolling_std = df['Close'].rolling(window=20).std()
-        df['Bollinger_Upper'] = df['MA20'] + (rolling_std * 2)
-        df['Bollinger_Lower'] = df['MA20'] - (rolling_std * 2)
-        
-        fig.add_trace(
-            go.Scatter(
-                x=df.index,
-                y=df['Bollinger_Upper'],
-                name='BB Upper',
-                line=dict(color='gray', width=1, dash='dash'),
-                opacity=0.5
-            ),
-            row=1, col=1
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=df.index,
-                y=df['Bollinger_Lower'],
-                name='BB Lower',
-                line=dict(color='gray', width=1, dash='dash'),
-                opacity=0.5,
-                fill='tonexty'
-            ),
-            row=1, col=1
-        )
+        for band in ['Bollinger_Upper', 'Bollinger_Lower']:
+            fig.add_trace(
+                go.Scatter(x=df.index, y=df[band], name=band,
+                          line=dict(color='gray', width=1, dash='dash'),
+                          opacity=0.5),
+                row=1, col=1
+            )
 
-    # handle RSI and MACD in bottom panel
     if show_rsi:
-        
-        # calculate RSI
-        delta = df['Close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / loss
-        df['RSI'] = 100 - (100 / (1 + rs))
-        
         fig.add_trace(
-            go.Scatter(
-                x=df.index,
-                y=df['RSI'],
-                name='RSI',
-                line=dict(color='orange', width=1)
-            ),
+            go.Scatter(x=df.index, y=df['RSI'], name='RSI',
+                      line=dict(color='orange', width=1)),
             row=2, col=1
         )
-        
-        # add RSI levels
-        fig.add_hline(y=70, line_dash="dash", line_color="red", opacity=0.5, row=2, col=1)
-        fig.add_hline(y=30, line_dash="dash", line_color="green", opacity=0.5, row=2, col=1)
-        
+        for level in [30, 70]:
+            fig.add_hline(y=level, line_dash="dash",
+                         line_color="red" if level == 70 else "green",
+                         opacity=0.5, row=2, col=1)
+            
     elif show_macd:
         fig.add_trace(
-            go.Scatter(
-                x=df.index,
-                y=df['MACD'],
-                name='MACD',
-                line=dict(color='blue', width=1)
-            ),
+            go.Scatter(x=df.index, y=df['MACD'], name='MACD',
+                      line=dict(color='blue', width=1)),
             row=2, col=1
         )
         fig.add_trace(
-            go.Scatter(
-                x=df.index,
-                y=df['Signal_Line'],
-                name='Signal Line',
-                line=dict(color='red', width=1)
-            ),
+            go.Scatter(x=df.index, y=df['Signal_Line'], name='Signal Line',
+                      line=dict(color='red', width=1)),
             row=2, col=1
         )
         fig.add_trace(
-            go.Bar(
-                x=df.index,
-                y=df['MACD_Histogram'],
-                name='MACD Histogram',
-                marker_color=np.where(df['MACD_Histogram'] >= 0, 'green', 'red'),
-                opacity=0.5
-            ),
+            go.Bar(x=df.index, y=df['MACD_Histogram'], name='MACD Histogram',
+                  marker_color=np.where(df['MACD_Histogram'] >= 0, 'green', 'red'),
+                  opacity=0.5),
             row=2, col=1
         )
 
@@ -219,8 +116,7 @@ def create_chart(data, show_rsi=False, show_bb=False, show_macd=False):
             bgcolor="rgba(0,0,0,0.5)"
         )
     )
-
-    # update axes
+    
     fig.update_xaxes(showgrid=True, gridcolor='rgba(255,255,255,0.1)')
     fig.update_yaxes(showgrid=True, gridcolor='rgba(255,255,255,0.1)')
 
@@ -362,83 +258,7 @@ app.layout = dbc.Container([
 ], fluid=True)
 
 
-def train_model(n_clicks, symbol):
-    if not n_clicks or not symbol:
-        return "Model Ready", False
-    
-    try:
-        if not symbol.endswith('.NS'):
-            symbol = f"{symbol}.NS"
-            
-        print(f"Training model for {symbol}...")
-        
-        # Initialize predictor with pre-trained weights
-        try:
-            predictor = StockPredictor('market_model.pkl')
-            model_data = predictor.model_data
-        except Exception as e:
-            raise Exception(f"Failed to load pre-trained model: {str(e)}")
-
-        # Fetch historical and sentiment data
-        stock = yf.Ticker(symbol)
-        hist = stock.history(period='2y')
-        
-        if hist.empty:
-            raise Exception(f"No data found for {symbol}")
-        
-        # Prepare features
-        technical_features = predictor._calculate_technical_features(hist)
-        sentiment_scores = []
-        
-        # Calculate sentiment for past periods
-        for date in hist.index[-90:]:  # Last 90 days
-            sentiment_score = predictor._scrape_news_sentiment(symbol)
-            sentiment_scores.append({
-                'date': date,
-                'sentiment': sentiment_score
-            })
-        
-        sentiment_df = pd.DataFrame(sentiment_scores)
-        sentiment_df.set_index('date', inplace=True)
-        
-        # Merge technical and sentiment features
-        combined_features = technical_features.merge(
-            sentiment_df,
-            left_index=True,
-            right_index=True,
-            how='left'
-        )
-        
-        # Fill missing sentiment values
-        combined_features['sentiment'] = combined_features['sentiment'].fillna(method='ffill').fillna(0)
-        
-        # Update model predictions with new data
-        for timeframe in ['5d', '10d', '15d']:
-            if timeframe in model_data['models']:
-                model = model_data['models'][timeframe]['random_forest']
-                scaler = model_data['models'][timeframe]['scaler']
-                
-                # Create targets for training
-                target = (hist['Close'].shift(-int(timeframe[0])) > hist['Close']).astype(int)
-                
-                # Update model with new data
-                model.n_estimators += 10  # Add more trees for new data
-                model.partial_fit(
-                    scaler.transform(combined_features.iloc[-90:]),  # Last 90 days
-                    target.iloc[-90:].fillna(0)
-                )
-        
-        # Save updated model
-        with open('market_model.pkl', 'wb') as f:
-            pickle.dump(model_data, f)
-            
-        print("Model updated successfully")
-        return "Model trained successfully!", False
-            
-    except Exception as e:
-        print(f"Training error: {e}")
-        return f"Training failed: {str(e)}", False
-    
+  
 @app.callback(
     [Output("main-chart", "figure"),
      Output("stock-symbol", "children"),
@@ -471,93 +291,58 @@ def train_model(n_clicks, symbol):
     [State("stock-input", "value")]
 )
 def update_dashboard(search_clicks, rsi_clicks, bb_clicks, macd_clicks,
-                    d1_clicks, w1_clicks, m1_clicks, m3_clicks, y1_clicks, 
+                    d1_clicks, w1_clicks, m1_clicks, m3_clicks, y1_clicks,
                     y2_clicks, y5_clicks, max_clicks, symbol):
-    if not symbol or not predictor:
+    if not symbol or predictor is None:
         return [dash.no_update] * 16
 
     ctx = dash.callback_context
-    if not ctx.triggered:
-        period = '1y'
-    else:
-        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
-        period = {
-            '1d-btn': '1d',
-            '1w-btn': '5d', 
-            '1m-btn': '1mo',
-            '3m-btn': '3mo',
-            '1y-btn': '1y',
-            '2y-btn': '2y',
-            '5y-btn': '5y',
-            'max-btn': 'max'
-        }.get(button_id, '1y')
-        
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else None
+    
+    period = {
+        '1d-btn': '1d', '1w-btn': '5d', '1m-btn': '1mo',
+        '3m-btn': '3mo', '1y-btn': '1y', '2y-btn': '2y',
+        '5y-btn': '5y', 'max-btn': 'max'
+    }.get(button_id, '1y')
+
     try:
-        # Add .NS suffix if not present
-        if not symbol.endswith('.NS'):
-            symbol = f"{symbol}.NS"
-            
-        # Fetch stock data
+        symbol = f"{symbol}.NS" if not symbol.endswith('.NS') else symbol
         stock = yf.Ticker(symbol)
         hist = stock.history(period=period)
         info = stock.info
-    
+        
         if hist.empty:
             raise Exception(f"No data found for {symbol}")
-    
-        if predictor is None:
-            raise Exception("Predictor not initialized")
-        
+            
         predictions = predictor.predict(symbol)
-        
         if not predictions:
             raise Exception("Failed to get predictions")
-        
-        # the states of the indicator toggles
+            
         show_rsi = bool(rsi_clicks and rsi_clicks % 2)
         show_bb = bool(bb_clicks and bb_clicks % 2)
         show_macd = bool(macd_clicks and macd_clicks % 2)
         
-        # Create main chart
-        chart = create_chart(
-            hist, 
-            show_rsi=show_rsi,
-            show_bb=show_bb,
-            show_macd=show_macd
-        )
+        chart = create_chart(hist, show_rsi, show_bb, show_macd)
         
         current_price = hist['Close'].iloc[-1]
         prev_close = hist['Close'].iloc[-2] if len(hist) > 1 else current_price
         price_change = ((current_price - prev_close)/prev_close * 100)
         
-        # Get market cap category for confidence adjustment
         market_cap = info.get('marketCap', 0)
-        if market_cap >= 50000000000:  # Large cap
-            cap_confidence_multiplier = 1.2
-        elif market_cap >= 10000000000:  # Mid cap
-            cap_confidence_multiplier = 1.0
-        else:  # Small cap
-            cap_confidence_multiplier = 0.8
-            
-        # Adjust confidence based on market cap
+        cap_confidence_multiplier = 1.2 if market_cap >= 50000000000 else (1.0 if market_cap >= 10000000000 else 0.8)
         adjusted_confidence = min(100, predictions['confidence'] * cap_confidence_multiplier)
         
         return [
             chart,
-            # Stock Overview
             symbol.replace('.NS', ''),
             f"₹{current_price:.2f}",
-            html.Span(
-                f"{price_change:+.2f}%",
-                style={'color': 'green' if price_change >= 0 else 'red'}
-            ),
-            # Company Details
+            html.Span(f"{price_change:+.2f}%",
+                     style={'color': 'green' if price_change >= 0 else 'red'}),
             f"₹{info.get('dayLow', 0):.2f} - ₹{info.get('dayHigh', 0):.2f}",
             f"₹{info.get('fiftyTwoWeekLow', 0):.2f} - ₹{info.get('fiftyTwoWeekHigh', 0):.2f}",
             f"₹{info.get('marketCap', 0)/10000000:.2f}Cr",
             f"{info.get('trailingPE', 'N/A')}",
             info.get('industry', 'N/A'),
-            # Predictions
             f"₹{predictions['price'] * (1 + predictions['5d_prob']):.2f}",
             f"{(predictions['5d_prob'] * 100):+.1f}%",
             f"₹{predictions['price'] * (1 + predictions['10d_prob']):.2f}",
@@ -566,12 +351,10 @@ def update_dashboard(search_clicks, rsi_clicks, bb_clicks, macd_clicks,
             f"{(predictions['15d_prob'] * 100):+.1f}%",
             f"{adjusted_confidence:.1f}%"
         ]
-        
     except Exception as e:
         print(f"Error updating dashboard: {e}")
         return [dash.no_update] * 16
 
-# button styles callback
 @app.callback(
     [Output("rsi-toggle", "color"),
      Output("bb-toggle", "color"),
@@ -582,19 +365,8 @@ def update_dashboard(search_clicks, rsi_clicks, bb_clicks, macd_clicks,
 )
 def update_button_styles(rsi_clicks, bb_clicks, macd_clicks):
     return [
-        "primary" if rsi_clicks and rsi_clicks % 2 else "wow",
-        "primary" if bb_clicks and bb_clicks % 2 else "wow",
-        "primary" if macd_clicks and macd_clicks % 2 else "wow"
-    ]
-def update_period_button_styles(d1_clicks, w1_clicks, m1_clicks, m3_clicks, y1_clicks, y2_clicks, y5_clicks, max_clicks):
-    ctx = dash.callback_context
-    if not ctx.triggered:
-        return ["secondary"] * 4 + ["primary"] + ["secondary"] * 3  # Default 1Y Selected
-        
-    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
-    return [
-        "primary" if btn_id == button_id else "secondary"
-        for btn_id in ["1d-btn", "1w-btn", "1m-btn", "3m-btn", "1y-btn", "2y-btn", "5y-btn", "max-btn"]
+        "primary" if clicks and clicks % 2 else "wow"
+        for clicks in [rsi_clicks, bb_clicks, macd_clicks]
     ]
 
 if __name__ == "__main__":
